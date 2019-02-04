@@ -29,6 +29,9 @@
    (inpkg :accessor inpkg :initform nil)
    ))
 
+(defmethod initialize-instance :after ((inst rpc-stream) &key &allow-other-keys)
+  (push inst *rpc-streams*))
+
 (defmethod do-call ((inst rpc-stream) funcname params
                                       ;;Returns error or nil + list of values ...
                                       &aux (*rpc-current* inst)
@@ -140,9 +143,9 @@
 
 
 ;;Placeholder for reentrant/concurent implementations
-;(defgeneric sync-rpcall ((client rpc-stream) method &rest params))
+(defgeneric sync-rpcall (rpc-stream string &rest params))
 
-;;No locking or reentrancy whatsoever. Do not mix with async versions!
+;;No locking or reentrancy or replies reordering whatsoever. Do not mix with async versions!
 (defun naive-rpcall (client method &rest params
                             &aux (res nil)
                             (err nil)
@@ -169,7 +172,7 @@
 
 (defmethod drop-all((inst rpc-stream))
   ;;Closes streams and calls all outstanding errbacks with control-error. Returns their count.
-
+  (setf *rpc-streams* (delete inst *rpc-streams*))
   (with-slots (input-stream output-stream handles) inst 
     (when output-stream (close output-stream ))
     (unless (eq output-stream input-stream )
