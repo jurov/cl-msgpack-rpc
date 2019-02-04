@@ -36,34 +36,38 @@
         (cerror "ignore remote error ~a" (write-to-string err)))
       (first res))))
 
-(defun make-usock-rpc (socket)
-  (let ((inst (make-instance 'usock-rpc-stream
+(defun make-usock-rpc (socket &rest args)
+  (let ((inst (apply #'make-instance 'usock-rpc-stream
                              :input-stream (socket-stream socket)
-                             :output-stream (socket-stream socket))))
+                             :output-stream (socket-stream socket)
+                             args)))
 
     inst))
 
 (defun rpclisten(socket
                   &optional (inst (make-usock-rpc socket)))
-    (loop
-      while (rpclisten-once inst))
+  (loop
+    while (rpclisten-once inst))
   (when *rpc-debug-out*
-  (format *rpc-debug-out* "rpclisten exited: ~{~a~^.~}:~s"
-                                 (coerce (get-peer-address socket) 'list)
-                                 (get-peer-port socket))))
+    (format *rpc-debug-out* "rpclisten exited: ~s~%"
+            (rpcname inst))))
 
 (defun rpclisten-async(socket &key (connect-cb nil))
   (make-thread #'(lambda () 
-                   (let ((inst (make-usock-rpc socket)))
-                     (when connect-cb (funcall connect-cb inst))
+                   (let* ((inst                      
+                            (if connect-cb (funcall connect-cb socket)
+                              (make-usock-rpc socket 
+                                              :name (thread-name(current-thread))))))
                      (rpclisten socket inst)))
-                   :name (format nil "msgpack-rpc ~{~a~^.~}:~s"
-                                 (coerce (get-peer-address socket) 'list)
-                                 (get-peer-port socket))))
+               :name (format nil "msgpack-rpc ~{~a~^.~}:~s"
+                             (coerce (get-peer-address socket) 'list)
+                             (get-peer-port socket))))
 
 
 (defun rpc-server (port &key (connect-cb nil))
 ;;Open listening socket and serve each new connection in its own thread
+;;connect-cb if present, accepts socket parameter and
+  ;;must create and return usock-rpc-stream instance
   (make-thread
     (let ((lsck (usocket:socket-listen #(127 0 0 1) port :element-type '(unsigned-byte 8))))
       (lambda()
