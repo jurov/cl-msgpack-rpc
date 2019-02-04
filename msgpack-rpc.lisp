@@ -26,7 +26,8 @@
    ;;callback handles
    (handles :accessor handles :initform (make-hash-table))
    ;;Package with callable symbols. By default nothing can be called.
-   (inpkg :accessor inpkg :initform nil)
+   (inpkg :accessor inpkg :initarg :inpkg :initform nil)
+   (name :accessor rpcname :initarg :name :initform "")
    ))
 
 (defmethod initialize-instance :after ((inst rpc-stream) &key &allow-other-keys)
@@ -40,21 +41,26 @@
   (if +DEBUG+ 
     (handler-bind 
       ((error #'invoke-debugger))
-
       (list nil (apply fnsym params)))
-    (handler-case 
-      (list nil (apply fnsym params))
+    (handler-case
+      (progn
+        (unless (fboundp fnsym) (error "No such function: ~a" funcname))
+        (list nil (apply fnsym params)))
       (error (e)    (format *rpc-error-out* "do-call got error: ~a~%" e) 
              (force-output *rpc-error-out* )
 
-             (list e)))))
+             (return-from do-call (list e nil))))))
 
-(defmethod mpk-encode ((inst rpc-stream) msgtyp msgid obj
-                                         &aux (params (make-array (length (rest obj)) :initial-contents (rest obj))))
+(defmethod mpk-encode ((inst rpc-stream) 
+                       msgtyp msgid obj
+                       &aux (params 
+                              (if (= msgtyp =RESPONSE=)
+                                (second obj)
+                                (make-array (length (rest obj)) :initial-contents (rest obj)))))
 
   (if msgid
-  (mpk:encode-stream (list msgtyp msgid (first obj) params) (output-stream inst))
-  (mpk:encode-stream (list msgtyp (first obj) params) (output-stream inst)))
+    (mpk:encode-stream (list msgtyp msgid (first obj) params) (output-stream inst))
+    (mpk:encode-stream (list msgtyp (first obj) params) (output-stream inst)))
 
   (when *rpc-debug-out*
     (let ((*print-pretty* nil)) (format *rpc-debug-out* "encoded(~A ~A): ~S ~%" msgid msgtyp obj))
@@ -100,10 +106,10 @@
                       (uiop/image::print-condition-backtrace c :stream *rpc-debug-out*)))))
 
 
-      (if (first err)
-        (mpk-encode client (list =RESPONSE= msgid err nil))
+      (if err
+        (mpk-encode client =RESPONSE= msgid (list err nil))
 
-        (mpk-encode client (list =RESPONSE= msgid nil res))))
+        (mpk-encode client =RESPONSE= msgid (list nil res))))
     ;; handle serialization errors here - using handler-bind would not unlock rpc lock
     (condition (c)
                (when *rpc-debug-out*
@@ -113,7 +119,8 @@
 
 (defmethod rpclisten-request((client rpc-stream) msgid meth params)
            (apply #'rpcresponse client msgid
-                  (do-call client meth params)))
+                  (do-call client meth params))
+  t)
 
 (defmethod rpclisten-response((client rpc-stream) msgid err res) 
   (let ((callbacks (gethash msgid (handles client))))
@@ -123,14 +130,16 @@
         (if err
           (funcall (second callbacks) err)
           (funcall (first callbacks) res)))
-      (cerror "Unexpected reply:~S" res))))
+      (cerror "Unexpected reply:~S" res)))
+  t)
 
 (defmethod rpclisten-notify((client rpc-stream) method params) 
   (let  ((notifyres (do-call client method params)))
     (when *rpc-debug-out*
       (format *rpc-debug-out* "notify: ~s ~s ~%~s~%" method params 
               notifyres)
-      (force-output *rpc-debug-out*))))
+      (force-output *rpc-debug-out*)))
+  t)
 
 (defmethod rpcall ((client rpc-stream) callback errback method &rest params
                                        &aux (myid (incf +msgid+)))

@@ -4,6 +4,8 @@
            #:*rpc-debug-out*
            #:*rpc-error-out*
            #:rpc-stream
+           #:rpcname
+           #:inpkg
            #:do-call
            #:mpk-encode
            #:rpcresponse
