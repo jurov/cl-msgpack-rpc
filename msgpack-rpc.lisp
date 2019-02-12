@@ -53,17 +53,19 @@
 
 (defmethod mpk-encode ((inst rpc-stream) 
                        msgtyp msgid obj
-                       &aux (params 
-                              (if (= msgtyp =RESPONSE=)
-                                (second obj)
-                                (make-array (length (rest obj)) :initial-contents (rest obj)))))
+                       &aux
+                       (params 
+                         (if (= msgtyp =RESPONSE=)
+                           (tree-to-array (second obj))
+                           ;(make-array (length (rest obj)) :initial-contents (rest obj)))))
+                           (tree-to-array (rest obj)))))
 
   (if msgid
     (mpk:encode-stream (list msgtyp msgid (first obj) params) (output-stream inst))
     (mpk:encode-stream (list msgtyp (first obj) params) (output-stream inst)))
 
   (when *rpc-debug-out*
-    (let ((*print-pretty* nil)) (format *rpc-debug-out* "encoded(~A ~A): ~S ~%" msgid msgtyp obj))
+    (let ((*print-pretty* nil)) (format *rpc-debug-out* "encoded(~A ~A ~A): ~S ~%" msgid msgtyp (first obj) params))
     (force-output *rpc-debug-out*))
   (force-output (output-stream inst)))
 
@@ -155,23 +157,26 @@
 (defgeneric sync-rpcall (rpc-stream string &rest params))
 
 ;;No locking or reentrancy or replies reordering whatsoever. Do not mix with async versions!
-(defun naive-rpcall (client method &rest params
-                            &aux (res nil)
-                            (err nil)
-                            (callback (lambda (stuff)
-                                        (setf res stuff)))
-                            (errback (lambda (errr)
-                                       (setf err errr))))
+(defun naive-rpcall 
+  (client 
+    method 
+    &rest params
+    &aux (res nil)
+    (err nil)
+    (callback (lambda (&rest stuff)
+                (setf res stuff)))
+    (errback (lambda (&rest errr)
+               (setf err errr))))
   (let ((myid (apply #'rpcall client callback errback method params)))
     (declare (ignore myid))
     (rpclisten-once client)
     (if err
       (progn
-        (format *rpc-error-out* "remote error: ~a~%" err)
+        (format *rpc-error-out* "remote error: ~a~%" (first err))
         (force-output *rpc-error-out*)
         ;;some errors have required parameters, so just convert them into string - simple-error
-        (cerror "ignore remote error: ~a" (write-to-string err) ))
-      res)))
+        (cerror "ignore remote error: ~a" (write-to-string (first err) )))
+      (first res))))
 
 (defmethod notify ((client rpc-stream) method &rest params)
                (when *rpc-debug-out*
@@ -191,3 +196,10 @@
         (loop for hdl being the hash-values of handles
               do (funcall (second hdl) '(cl:control-error)))
         (setf handles nil)))))
+
+;Recursively convert tree to nested arrays. 
+;Messagepack encoder is trigger-happy to encode alists and plists as hashes
+(defun tree-to-array(tree)
+    (if (listp tree)
+    (map 'vector #'tree-to-array tree)
+      tree))
