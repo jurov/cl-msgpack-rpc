@@ -2,7 +2,7 @@
   :description "RPC library implementation of messagepack-rpc"
   :author "Juraj Variny"
   :license "MIT"
-  :depends-on (#:cl-msgpack-rpc)
+  :depends-on (#:cl-msgpack-rpc-usocket)
   :around-compile (lambda (next)
                     (proclaim '(optimize (debug 3) 
                                          (safety 3)

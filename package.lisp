@@ -8,6 +8,7 @@
            #:inpkg
            #:do-call
            #:mpk-encode
+           #:mpk-decode
            #:rpcresponse
            #:rpclisten-once
            #:rpclisten-request

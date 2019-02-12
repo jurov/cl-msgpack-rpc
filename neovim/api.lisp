@@ -1,19 +1,13 @@
 (in-package :cl-neovim)
 
 (defun call/a (inst method &rest params)
-  (let ((messagepack:*extended-types* *ext-type-list*)
-        (messagepack:*lookup-table* *ext-lookup-table*))
-    (apply #'msgpack-rpc::notify inst method params)))
+    (apply #'msgpack-rpc::notify inst method params))
 
 (defun call/s (inst method &rest params)
-  (let ((messagepack:*extended-types* *ext-type-list*)
-        (messagepack:*lookup-table* *ext-lookup-table*))
-    (apply #'msgpack-rpc::sync-rpcall inst method params)))
+    (apply #'msgpack-rpc::sync-rpcall inst method params))
 
 (defun call/naive (inst method &rest params)
-  (let ((messagepack:*extended-types* *ext-type-list*)
-        (messagepack:*lookup-table* *ext-lookup-table*))
-    (apply #'msgpack-rpc:: naive-rpcall inst method params)))
+    (apply #'msgpack-rpc::naive-rpcall inst method params))
 
 (defvar *nvim-instance* nil)
 

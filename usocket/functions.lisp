@@ -2,14 +2,15 @@
 
 (defclass usock-rpc-stream (rpc-stream) 
    ;;Lock for output to output-stream
-   ((lock :accessor lock :initform (make-lock)))
+   ((lock :accessor lock :initform (make-lock))
+    (ownthread :accessor ownthread :initform (current-thread)))
   )
 
 (defmethod msgpack-rpc:mpk-encode :around ((inst usock-rpc-stream) msgtyp msgid obj)
   (with-lock-held ((lock inst))
                   (call-next-method inst msgtyp msgid obj)))
 
-;;Threadsafe, blocking
+;;Threadsafe, blocking, reentrant
 (defmethod sync-rpcall 
   ((client usock-rpc-stream) 
    method 
@@ -27,8 +28,15 @@
   (acquire-lock lock)
   (let ((myid (apply #'rpcall client callback errback method params)))
     (declare (ignore myid))
-    (thread-yield)
-    (loop until (or res err) do (condition-wait condition lock))
+    (if (eq (ownthread client) (current-thread))
+      ;we are the client - restart event loop
+      (progn
+        (format *rpc-debug-out* "sync call in client thread: ~a~%" method)
+        (loop until (or res err) do (rpclisten-once client)))
+      ;wait for client thread
+      (progn
+        (thread-yield)
+        (loop until (or res err) do (condition-wait condition lock))))
     (if err
       (progn
         (format *rpc-error-out* "remote error: ~a~%" (first err))
